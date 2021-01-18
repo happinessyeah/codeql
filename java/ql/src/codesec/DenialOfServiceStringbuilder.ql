@@ -6,34 +6,44 @@
  * @precision high
  * @id java/StringBuilder
  * @tags security
- *       external/cwe/cwe-079
+ *       external/stringBuilder
  */
 
 import java
 import semmle.code.java.dataflow.FlowSources
-import semmle.code.java.codesec.StringBuilder
+// import semmle.code.java.codesec.StringBuilder
 import DataFlow::PathGraph
 
 /** 污点函数匹配. */
-private class DefaultStringBuilderSink extends DataFlow::Node {
-  DefaultStringBuilderSink() {
-    // exists(Method m |
-    //   m.getDeclaringType().(StringBuilderSink).isSinkType()
-    // ) and
-    // exists(Method m, StringBuilderSink s | s.isSinkMethodName(m.getACallee().getName())) and
-    exists(Method m | m.getName().matches("bad"))
+class StringBuilderSink extends DataFlow::Node {
+  StringBuilderSink() {
+    exists(MethodAccess ma |
+      ma.getMethod().hasName("append") and
+      ma.getMethod().getDeclaringType().hasQualifiedName("java.lang", "StringBuilder") and
+      ma.getNumArgument() = 1 and
+      this.asExpr() = ma
+    )
+  }
+}
+
+class StringBuilderSource extends DataFlow::Node {
+  StringBuilderSource() {
+    exists(ClassInstanceExpr cls |
+      cls.getType().hasName("StringBuilder") and
+      cls.getNumArgument() = 0 and
+      this.asExpr() = cls
+    )
   }
 }
 
 class StringbuilderConfig extends TaintTracking::Configuration {
   StringbuilderConfig() { this = "stringbuilderConfig" }
 
-  override predicate isSource(DataFlow::Node source) { 1 = 1 }
+  override predicate isSource(DataFlow::Node source) { source instanceof StringBuilderSource }
 
-  override predicate isSink(DataFlow::Node sink) { sink instanceof DefaultStringBuilderSink }
+  override predicate isSink(DataFlow::Node sink) { sink instanceof StringBuilderSink }
 }
 
 from DataFlow::PathNode source, DataFlow::PathNode sink, StringbuilderConfig conf
 where conf.hasFlowPath(source, sink)
-select sink.getNode(), source, sink, "Denial of Service: StringBuilder $@.", source.getNode(),
-  "user-provided value"
+select source.getNode(), source, sink, sink.getNode()
